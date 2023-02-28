@@ -13,6 +13,7 @@ using XFA_API.Models;
 using XFA_API.Services;
 using TallComponents.PDF.Actions;
 using TallComponents.PDF.Forms.Data;
+using NuGet.Protocol.Plugins;
 
 namespace XFA_API.Controllers
 {
@@ -142,9 +143,76 @@ namespace XFA_API.Controllers
             return Ok();
         }
 
-        // GET
-        [HttpPost("GenAndValid")]
-        public async Task<IActionResult> GetAndValidDocument(ActionFieldRequest actionFieldRequests) 
+        // POST
+        [HttpPost("ValidationDoc")]
+        public async Task<ActionResult<string>> ValidationDoc([FromForm] ValidationRequest vRequest)
+        {
+            var docId = vRequest.DocumentId;
+
+            if(_context.Documents == null)
+            {
+                return NotFound();
+            }
+
+            var doc = await _context.Documents.FindAsync(docId);
+
+            if(doc == null)
+            {
+                return NotFound();
+            }
+
+            FileStream inFile = new FileStream(doc.file_path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+            Document document = new Document(inFile);
+
+            document.Fields.Changed += Fields_Changed;
+
+            // Find Validation Button Path
+            var validationButtonPath = doc.validation_button;
+
+            // Find Validation Button
+            PushButtonField buttonField = document.Fields[validationButtonPath] as PushButtonField;
+
+            if(buttonField == null)
+            {
+                return NotFound(nameof(validationButtonPath));
+            }
+
+            // Click Validation Button
+            buttonField.XfaInfo.ClickActions.Execute();
+
+            // Export file
+            var uniqueFileName = DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".pdf";
+
+            var folderName = Path.Combine("Resources", "Pdf", "Export");
+
+            var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
+
+            var exportPath = Path.Combine(pathToSave, uniqueFileName);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(exportPath));
+
+            FileStream exportFile = new FileStream(exportPath, FileMode.Create, FileAccess.Write);
+
+            document.Write(exportFile);
+
+            exportFile.Close();
+
+            // Save to context
+            ExportedFile exportedFile = new ExportedFile
+            {
+                Path = exportPath,
+            };
+
+            await _service.SaveExportedFileAsync(exportedFile);
+
+            //
+            return "/DownloadDoc/" + exportedFile.Id;
+        }
+
+        // POST
+        [HttpPost("GenerationDoc")]
+        public async Task<ActionResult<string>> GenerationDoc(ActionFieldRequest actionFieldRequests) 
         {
             if (_context.Documents == null)
             {
@@ -221,26 +289,33 @@ namespace XFA_API.Controllers
             //XdpFormData xdp = doc.Export(SubmitFormat.Xdp, false) as XdpFormData;
             //xdp.Path = filePath;
 
-            //FileStream xdpFile = new FileStream("E:/Purchase Order_data.xdp", FileMode.Create, FileAccess.Write);
+            // export file
+            var uniqueFileName = DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".pdf";
 
-            //xdp.Write(xdpFile);
+            var folderName = Path.Combine("Resources", "Pdf", "Export");
 
-            //xdpFile.Close();
+            var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
 
-            //doc.ScriptBehavior = ScriptBehavior.Format;
+            var exportPath = Path.Combine(pathToSave, uniqueFileName);
 
-            MemoryStream ms = new MemoryStream();
+            Directory.CreateDirectory(Path.GetDirectoryName(exportPath));
 
-            doc.Write(ms);
+            FileStream exportFile = new FileStream(exportPath, FileMode.Create, FileAccess.Write);
 
-            ms.Position = 0;
+            doc.Write(exportFile);
 
-            FileStreamResult fileStreamResult = new FileStreamResult(ms, "application/pdf");
-            fileStreamResult.FileDownloadName = Path.GetRandomFileName() + "_export.pdf";
+            exportFile.Close();
 
-            inFile.Close();
+            // save to context
+            ExportedFile exportedFile = new ExportedFile
+            {
+                Path = exportPath,
+            };
 
-            return fileStreamResult;
+            await _service.SaveExportedFileAsync(exportedFile);
+
+            //
+            return "/DownloadDoc/" + exportedFile.Id;
         }
 
         // PUT: api/Documents/5
@@ -322,6 +397,33 @@ namespace XFA_API.Controllers
             await _context.SaveChangesAsync();
 
             return NoContent();
+        }
+
+        // GET
+        // Download Exported PDF File
+        [HttpGet("DownloadDoc/{id}")]
+        public async Task<IActionResult> DownloadDoc(long id)
+        {
+            if (_context.ExportedFiles == null)
+            {
+                return NotFound();
+            }
+
+            var fileInfo = await _context.ExportedFiles.FindAsync(id);
+
+            if (fileInfo == null)
+            {
+                return NotFound();
+            }
+
+            var filePath = fileInfo.Path;
+
+            FileStream inFile = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+            FileStreamResult fileStreamResult = new FileStreamResult(inFile, "application/pdf");
+            fileStreamResult.FileDownloadName = Path.GetRandomFileName() + "_export.pdf";
+
+            return fileStreamResult;
         }
 
         private bool DocumentExists(long id)

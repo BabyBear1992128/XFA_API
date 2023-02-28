@@ -55,6 +55,19 @@ namespace XFA_API.Services
             return filePath;
         }
 
+        public async Task<bool> SaveExportedFileAsync(ExportedFile exportedFile)
+        {
+            var fileEntry = await _context.ExportedFiles.AddAsync(exportedFile);
+            var saveResponse = await _context.SaveChangesAsync();
+
+            if (saveResponse < 0)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
         public async Task DownloadFileById(int Id)
         {
             //try

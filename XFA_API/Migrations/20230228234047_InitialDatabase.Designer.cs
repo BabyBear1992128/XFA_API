@@ -12,7 +12,7 @@ using XFA_API.Models;
 namespace XFA_API.Migrations
 {
     [DbContext(typeof(XFAContext))]
-    [Migration("20230227125220_InitialDatabase")]
+    [Migration("20230228234047_InitialDatabase")]
     partial class InitialDatabase
     {
         /// <inheritdoc />
@@ -33,7 +33,7 @@ namespace XFA_API.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("id"));
 
-                    b.Property<long?>("Documentid")
+                    b.Property<long?>("DocumentModelid")
                         .HasColumnType("bigint");
 
                     b.Property<long>("document_id")
@@ -49,12 +49,12 @@ namespace XFA_API.Migrations
 
                     b.HasKey("id");
 
-                    b.HasIndex("Documentid");
+                    b.HasIndex("DocumentModelid");
 
                     b.ToTable("action_field");
                 });
 
-            modelBuilder.Entity("XFA_API.Models.Document", b =>
+            modelBuilder.Entity("XFA_API.Models.DocumentModel", b =>
                 {
                     b.Property<long>("id")
                         .ValueGeneratedOnAdd()
@@ -83,6 +83,23 @@ namespace XFA_API.Migrations
                     b.ToTable("documents");
                 });
 
+            modelBuilder.Entity("XFA_API.Models.ExportedFile", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("exported_file");
+                });
+
             modelBuilder.Entity("XFA_API.Models.InputField", b =>
                 {
                     b.Property<long>("id")
@@ -91,7 +108,7 @@ namespace XFA_API.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("id"));
 
-                    b.Property<long?>("Documentid")
+                    b.Property<long?>("DocumentModelid")
                         .HasColumnType("bigint");
 
                     b.Property<long>("document_id")
@@ -107,75 +124,26 @@ namespace XFA_API.Migrations
 
                     b.HasKey("id");
 
-                    b.HasIndex("Documentid");
+                    b.HasIndex("DocumentModelid");
 
                     b.ToTable("input_fields");
                 });
 
-            modelBuilder.Entity("XFA_API.Models.Post", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Imagepath")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("Published")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("Ts")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Posts");
-                });
-
-            modelBuilder.Entity("XFA_API.Models.TodoItem", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<bool>("IsComplete")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("TodoItems");
-                });
-
             modelBuilder.Entity("XFA_API.Models.ActionField", b =>
                 {
-                    b.HasOne("XFA_API.Models.Document", null)
+                    b.HasOne("XFA_API.Models.DocumentModel", null)
                         .WithMany("action_fields")
-                        .HasForeignKey("Documentid");
+                        .HasForeignKey("DocumentModelid");
                 });
 
             modelBuilder.Entity("XFA_API.Models.InputField", b =>
                 {
-                    b.HasOne("XFA_API.Models.Document", null)
+                    b.HasOne("XFA_API.Models.DocumentModel", null)
                         .WithMany("input_fields")
-                        .HasForeignKey("Documentid");
+                        .HasForeignKey("DocumentModelid");
                 });
 
-            modelBuilder.Entity("XFA_API.Models.Document", b =>
+            modelBuilder.Entity("XFA_API.Models.DocumentModel", b =>
                 {
                     b.Navigation("action_fields");
 

@@ -13,6 +13,7 @@ namespace XFA_API.Models
         public DbSet<DocumentModel> Documents { get; set; } = default!;
         public DbSet<ActionField> ActionFields { get; set; }
         public DbSet<InputField> InputFields { get; set; }
+        public DbSet<ExportedFile> ExportedFiles { get; set; }
 
     }
 }
