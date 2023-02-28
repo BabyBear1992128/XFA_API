@@ -3,14 +3,30 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using XFA_API.Models;
+using XFA_API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+//const string AllowAllHeadersPolicy = "AllowAllHeadersPolicy";
+//builder.Services.AddCors(options =>
+//{
+//    options.AddPolicy(AllowAllHeadersPolicy,
+//        builder =>
+//        {
+//            builder.WithOrigins("https://localhost:7200")
+//                    .AllowAnyMethod()
+//                   .AllowAnyHeader();
+//        });
+//});
 
 builder.Services.AddControllers();
-builder.Services.AddDbContext<TodoContext>(opt =>
-    opt.UseInMemoryDatabase("TodoList"));
+builder.Services.AddDbContext<XFAContext>(opt =>
+        //opt.UseInMemoryDatabase("XFA_Data")
+        opt.UseNpgsql(builder.Configuration.GetConnectionString("Postgres_Db"))
+    );
+
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -26,6 +42,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
     };
 });
+builder.Services.AddTransient<IDocumentService, DocumentService>();
 
 var app = builder.Build();
 
