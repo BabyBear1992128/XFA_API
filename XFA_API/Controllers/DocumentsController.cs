@@ -1,19 +1,18 @@
-﻿using iText.Forms.Xfa;
-using iText.Forms;
-using iText.Kernel.Pdf;
+﻿using iTextSharp.text.pdf;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Syncfusion.Pdf.Xfa;
+using System.Threading;
 using TallComponents.PDF;
+using TallComponents.PDF.Actions;
 using TallComponents.PDF.Annotations.Widgets;
+using TallComponents.PDF.Forms.Data;
 using TallComponents.PDF.Forms.Fields;
 using TallComponents.PDF.JavaScript;
 using XFA_API.Models;
 using XFA_API.Services;
-using TallComponents.PDF.Actions;
-using TallComponents.PDF.Forms.Data;
-using NuGet.Protocol.Plugins;
+using TextField = TallComponents.PDF.Forms.Fields.TextField;
 
 namespace XFA_API.Controllers
 {
@@ -86,8 +85,8 @@ namespace XFA_API.Controllers
         }
 
         // Export XFA Data to XML
-        [HttpGet("ExportXFAData/{id}")]
-        public async Task<IActionResult> ExportXFAData(long id)
+        [HttpGet("ExportXFAData1/{id}")]
+        public async Task<IActionResult> ExportXFAData1(long id)
         {
             if (_context.Documents == null)
             {
@@ -101,6 +100,43 @@ namespace XFA_API.Controllers
             }
 
             var filePath = document.file_path;
+
+            //
+            FileStream inFile = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+            //
+            PdfLoadedXfaDocument ldoc = new PdfLoadedXfaDocument(inFile);
+
+            PdfLoadedXfaForm lform = ldoc.XfaForm;
+
+            MemoryStream ms = new MemoryStream();
+
+            lform.ExportXfaData(ms);
+
+            ms.Position = 0;
+
+            FileStreamResult fileStreamResult = new FileStreamResult(ms, "application/xml");
+            fileStreamResult.FileDownloadName = Path.GetRandomFileName() + "_export.xml";
+
+            return fileStreamResult;
+        }
+
+        // Export XFA Data to XML
+        [HttpGet("ExportXFAData2/{id}")]
+        public async Task<IActionResult> ExportXFAData2(long id)
+        {
+            if (_context.ExportedFiles == null)
+            {
+                return NotFound();
+            }
+            var exportFile = await _context.ExportedFiles.FindAsync(id);
+
+            if (exportFile == null)
+            {
+                return NotFound();
+            }
+
+            var filePath = exportFile.Path;
 
             FileStream inFile = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
@@ -138,7 +174,8 @@ namespace XFA_API.Controllers
 
             var filePath = document.file_path;
 
-            manipulatePdf(filePath, "E:/merged.pdf");
+            mergeXFA(filePath, "E:/export.xml", "E:/merged.pdf");
+            //mergeXFA1(filePath);
 
             return Ok();
         }
@@ -207,7 +244,7 @@ namespace XFA_API.Controllers
             await _service.SaveExportedFileAsync(exportedFile);
 
             //
-            return "/DownloadDoc/" + exportedFile.Id;
+            return "/api/ExportedFiles/Download/" + exportedFile.Id;
         }
 
         // POST
@@ -286,8 +323,14 @@ namespace XFA_API.Controllers
             //radioField1.Value = "1";
 
             // Export to XDP
-            //XdpFormData xdp = doc.Export(SubmitFormat.Xdp, false) as XdpFormData;
-            //xdp.Path = filePath;
+
+            XdpFormData xdp = doc.Export(SubmitFormat.Xdp, false) as XdpFormData;
+            xdp.Path = filePath;
+
+            using (FileStream xdpFile = new FileStream("E:/Purchase Order_data.xdp", FileMode.Create, FileAccess.Write))
+            {
+                xdp.Write(xdpFile);
+            }
 
             // export file
             var uniqueFileName = DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".pdf";
@@ -315,7 +358,7 @@ namespace XFA_API.Controllers
             await _service.SaveExportedFileAsync(exportedFile);
 
             //
-            return "/DownloadDoc/" + exportedFile.Id;
+            return "/api/ExportedFiles/Download/" + exportedFile.Id;
         }
 
         // PUT: api/Documents/5
@@ -399,32 +442,7 @@ namespace XFA_API.Controllers
             return NoContent();
         }
 
-        // GET
-        // Download Exported PDF File
-        [HttpGet("DownloadDoc/{id}")]
-        public async Task<IActionResult> DownloadDoc(long id)
-        {
-            if (_context.ExportedFiles == null)
-            {
-                return NotFound();
-            }
-
-            var fileInfo = await _context.ExportedFiles.FindAsync(id);
-
-            if (fileInfo == null)
-            {
-                return NotFound();
-            }
-
-            var filePath = fileInfo.Path;
-
-            FileStream inFile = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-
-            FileStreamResult fileStreamResult = new FileStreamResult(inFile, "application/pdf");
-            fileStreamResult.FileDownloadName = Path.GetRandomFileName() + "_export.pdf";
-
-            return fileStreamResult;
-        }
+        
 
         private bool DocumentExists(long id)
         {
@@ -437,17 +455,72 @@ namespace XFA_API.Controllers
             //System.Diagnostics.Debug.Assert(e.Added.Length == 6);
         }
 
-        private static void manipulatePdf(String src, String dest)
+        private static void mergeXFA(String sourceXfaPath, String exportXfaXml, String exportPdf)
         {
-            FileStream xml = new FileStream("E:/export.xml", FileMode.Open);
+            using (FileStream pdf = new FileStream(sourceXfaPath, FileMode.Open))
+            using (FileStream xml = new FileStream(exportXfaXml, FileMode.Open))
+            using (FileStream filledPdf = new FileStream(exportPdf, FileMode.Create))
+            {
+                PdfReader pdfReader = new PdfReader(pdf);
+                PdfStamper stamper = new PdfStamper(pdfReader, filledPdf, '\0', true);
+                stamper.AcroFields.Xfa.FillXfaForm(xml);
+                stamper.Close();
+                pdfReader.Close();
+            }
+        }
 
-            PdfReader reader = new PdfReader(src);
-            PdfDocument pdfDoc = new PdfDocument(reader, new PdfWriter(dest), new StampingProperties().UseAppendMode());
-            PdfAcroForm form = PdfAcroForm.GetAcroForm(pdfDoc, true);
-            XfaForm xfa = form.GetXfaForm();
-            xfa.FillXfaForm(xml);
-            xfa.Write(pdfDoc);
-            pdfDoc.Close();
+        private static void mergeXFA1(string xfaFilePath)
+        {
+            using (FileStream inFile = new FileStream(xfaFilePath, FileMode.Open, FileAccess.Read))
+            {
+                // open 
+                Document document = new Document(inFile);
+
+                // import
+                using (FileStream inXdp = new FileStream("E:/Purchase Order_data.xdp", FileMode.Open, FileAccess.Read))
+                {
+                    XdpFormData xdpData = new XdpFormData(inXdp);
+                    document.Import(xdpData);
+                }
+
+                // save
+                using (FileStream outFile = new FileStream("E:/Purchase Order Filled.pdf", FileMode.Create, FileAccess.Write))
+                {
+                    document.Write(outFile);
+                }
+            }
+        }
+
+        private static void FlattenPDF(string filePath)
+        {
+            using (FileStream fileIn = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+            {
+                Document form = new Document(fileIn);
+
+                // activate the javascript engine, so format actions will be executed.
+                form.ScriptBehavior = ScriptBehavior.Format;
+
+                // flatten all form-data with the current value, except text-field field-name.
+                foreach (Field field in form.Fields)
+                {
+                    TextField textField = field as TextField;
+                    if (textField != null)
+                    {
+                        textField.Value = textField.FullName;
+                    }
+
+                    foreach (Widget widget in field.Widgets)
+                    {
+                        widget.Persistency = WidgetPersistency.Flatten;
+                    }
+                }
+
+                // write flattened form back to disk
+                using (FileStream fileOut = new FileStream("E:/xxx.pdf", FileMode.Create, FileAccess.Write))
+                {
+                    form.Write(fileOut);
+                }
+            }
         }
     }
 }

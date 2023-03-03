@@ -69,6 +69,33 @@ namespace XFA_API.Controllers
             return NoContent();
         }
 
+        // GET
+        // Download Exported PDF File
+        [HttpGet("Download/{id}")]
+        public async Task<IActionResult> DownloadExportFile(long id)
+        {
+            if (_context.ExportedFiles == null)
+            {
+                return NotFound();
+            }
+
+            var fileInfo = await _context.ExportedFiles.FindAsync(id);
+
+            if (fileInfo == null)
+            {
+                return NotFound();
+            }
+
+            var filePath = fileInfo.Path;
+
+            FileStream inFile = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+            FileStreamResult fileStreamResult = new FileStreamResult(inFile, "application/pdf");
+            fileStreamResult.FileDownloadName = Path.GetRandomFileName() + "_export.pdf";
+
+            return fileStreamResult;
+        }
+
         private bool ExportedFileExists(long id)
         {
             return (_context.ExportedFiles?.Any(e => e.Id == id)).GetValueOrDefault();
