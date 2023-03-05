@@ -1,9 +1,7 @@
-﻿using iTextSharp.text.pdf;
-using Microsoft.AspNetCore.Http.Extensions;
+﻿using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Syncfusion.Pdf.Xfa;
-using System.Threading;
 using TallComponents.PDF;
 using TallComponents.PDF.Actions;
 using TallComponents.PDF.Annotations.Widgets;
@@ -13,6 +11,9 @@ using TallComponents.PDF.JavaScript;
 using XFA_API.Models;
 using XFA_API.Services;
 using TextField = TallComponents.PDF.Forms.Fields.TextField;
+using System.Xml.Linq;
+using System.Xml;
+using iTextSharp.text.pdf;
 
 namespace XFA_API.Controllers
 {
@@ -122,40 +123,40 @@ namespace XFA_API.Controllers
         }
 
         // Export XFA Data to XML
-        [HttpGet("ExportXFAData2/{id}")]
-        public async Task<IActionResult> ExportXFAData2(long id)
-        {
-            if (_context.ExportedFiles == null)
-            {
-                return NotFound();
-            }
-            var exportFile = await _context.ExportedFiles.FindAsync(id);
+        //[HttpGet("ExportXFAData2/{id}")]
+        //public async Task<IActionResult> ExportXFAData2(long id)
+        //{
+        //    if (_context.ExportedFiles == null)
+        //    {
+        //        return NotFound();
+        //    }
+        //    var exportFile = await _context.ExportedFiles.FindAsync(id);
 
-            if (exportFile == null)
-            {
-                return NotFound();
-            }
+        //    if (exportFile == null)
+        //    {
+        //        return NotFound();
+        //    }
 
-            var filePath = exportFile.Path;
+        //    var filePath = exportFile.Path;
 
-            FileStream inFile = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        //    FileStream inFile = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
-            //
-            PdfLoadedXfaDocument ldoc = new PdfLoadedXfaDocument(inFile);
+        //    //
+        //    PdfLoadedXfaDocument ldoc = new PdfLoadedXfaDocument(inFile);
 
-            PdfLoadedXfaForm lform = ldoc.XfaForm;
+        //    PdfLoadedXfaForm lform = ldoc.XfaForm;
 
-            MemoryStream ms = new MemoryStream();
+        //    MemoryStream ms = new MemoryStream();
 
-            lform.ExportXfaData(ms);
+        //    lform.ExportXfaData(ms);
 
-            ms.Position = 0;
+        //    ms.Position = 0;
 
-            FileStreamResult fileStreamResult = new FileStreamResult(ms, "application/xml");
-            fileStreamResult.FileDownloadName = Path.GetRandomFileName() + "_export.xml";
+        //    FileStreamResult fileStreamResult = new FileStreamResult(ms, "application/xml");
+        //    fileStreamResult.FileDownloadName = Path.GetRandomFileName() + "_export.xml";
 
-            return fileStreamResult;
-        }
+        //    return fileStreamResult;
+        //}
 
         // GET
         [HttpGet("MergeXDPAndXFA/{id}")]
@@ -275,8 +276,9 @@ namespace XFA_API.Controllers
 
             Document doc = new Document(inFile);
 
-            doc.Fields.Changed += Fields_Changed;
+            doc.ScriptBehavior = ScriptBehavior.Format;
 
+            doc.Fields.Changed += Fields_Changed;
 
             // Action
             foreach (var action in actionFieldRequests.Actions)
@@ -309,30 +311,55 @@ namespace XFA_API.Controllers
                             }
                         }
                         break;
+                    case "checkbox":
+                        var field3 = doc.Fields[action.FieldPath];
+
+                        if (field3 != null && field3 is CheckBoxField)
+                        {
+                            var checkField = field3 as CheckBoxField;
+
+                            if (checkField != null)
+                            {
+                                if(action.Data == "true")
+                                {
+                                    checkField.CheckBoxValue = CheckState.On;
+                                }
+                                else
+                                {
+                                    checkField.CheckBoxValue = CheckState.Off;
+                                }
+                            }
+                        }
+                        break;
                     default: break;
                 }
             }
 
-            //PushButtonField buttonField = doc.Fields["form1[0].btnDoc[0].btnValid[0]"] as PushButtonField;
-
-            //buttonField.XfaInfo.ClickActions.Execute();
-
-            //RadioButtonField radioField1 = doc.Fields["form1[0].s211[0].date[0].Cat[0].cat[0].slct[0]"] as RadioButtonField;
-            //RadioButtonField radioField2 = doc.Fields["form1[0].s211[0].date[0].Cat[0].cat[0].chirie[0]"] as RadioButtonField;
-
-            //radioField1.Value = "1";
-
             // Export to XDP
-
             XdpFormData xdp = doc.Export(SubmitFormat.Xdp, false) as XdpFormData;
-            xdp.Path = filePath;
+            //xdp.Path = filePath;
 
-            using (FileStream xdpFile = new FileStream("E:/Purchase Order_data.xdp", FileMode.Create, FileAccess.Write))
+            var xdpPath = Path.Combine("Resources", "Pdf", "Xdp", DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".xdp");
+            var xmlPath = Path.Combine("Resources", "Pdf", "Xml", DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".xml");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(xdpPath));
+            Directory.CreateDirectory(Path.GetDirectoryName(xmlPath));
+
+            using (FileStream xdpFile = new FileStream(xdpPath, FileMode.Create, FileAccess.Write))
             {
                 xdp.Write(xdpFile);
             }
 
-            // export file
+            // Generate XML from XDP
+            XmlDocument xmlDoc1 = new XmlDocument();
+            xmlDoc1.Load(xdpPath);
+            var xfaData = xmlDoc1.LastChild.FirstChild.OuterXml;
+
+            XmlDocument xdoc = new XmlDocument();
+            xdoc.LoadXml(xfaData);
+            xdoc.Save(xmlPath);
+
+            // Merge XML and Blank File
             var uniqueFileName = DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".pdf";
 
             var folderName = Path.Combine("Resources", "Pdf", "Export");
@@ -343,13 +370,9 @@ namespace XFA_API.Controllers
 
             Directory.CreateDirectory(Path.GetDirectoryName(exportPath));
 
-            FileStream exportFile = new FileStream(exportPath, FileMode.Create, FileAccess.Write);
+            mergeXFA(filePath, xmlPath, exportPath);
 
-            doc.Write(exportFile);
-
-            exportFile.Close();
-
-            // save to context
+            // Save to context
             ExportedFile exportedFile = new ExportedFile
             {
                 Path = exportPath,
@@ -441,7 +464,6 @@ namespace XFA_API.Controllers
 
             return NoContent();
         }
-
         
 
         private bool DocumentExists(long id)
@@ -454,21 +476,34 @@ namespace XFA_API.Controllers
             // note that after invoking the 'Add Item' buttons Click action, 6 new fields were added to the collection
             //System.Diagnostics.Debug.Assert(e.Added.Length == 6);
         }
-
+        
+        // Merge XML and Blank with iTextSharp
         private static void mergeXFA(String sourceXfaPath, String exportXfaXml, String exportPdf)
         {
             using (FileStream pdf = new FileStream(sourceXfaPath, FileMode.Open))
             using (FileStream xml = new FileStream(exportXfaXml, FileMode.Open))
             using (FileStream filledPdf = new FileStream(exportPdf, FileMode.Create))
             {
-                PdfReader pdfReader = new PdfReader(pdf);
-                PdfStamper stamper = new PdfStamper(pdfReader, filledPdf, '\0', true);
-                stamper.AcroFields.Xfa.FillXfaForm(xml);
-                stamper.Close();
-                pdfReader.Close();
+                iTextSharp.text.pdf.PdfReader pdfReader = new iTextSharp.text.pdf.PdfReader(pdf);
+
+                try
+                {
+                    PdfStamper stamper = new PdfStamper(pdfReader, filledPdf, '\0', true);
+
+                    stamper.AcroFields.Xfa.FillXfaForm(xml);
+                    stamper.Close();
+                    pdfReader.Close();
+                }
+                catch(NullReferenceException ex)
+                {
+                    Console.WriteLine(ex.ToString());
+                }
+
+                
             }
         }
 
+        // Merge XDP and Blank with PDFKit.NET 5
         private static void mergeXFA1(string xfaFilePath)
         {
             using (FileStream inFile = new FileStream(xfaFilePath, FileMode.Open, FileAccess.Read))
@@ -490,6 +525,22 @@ namespace XFA_API.Controllers
                 }
             }
         }
+
+        // Extract as XML with iText7
+        protected static void ExportXMLFromPDF(string sourcePath)
+        {
+            iText.Kernel.Pdf.PdfDocument pdf = new iText.Kernel.Pdf.PdfDocument(new iText.Kernel.Pdf.PdfReader(sourcePath));
+            iText.Forms.PdfAcroForm form = iText.Forms.PdfAcroForm.GetAcroForm(pdf, true);
+            iText.Forms.Xfa.XfaForm xfa = form.GetXfaForm();
+            XDocument doc = xfa.GetDomDocument();
+
+            // save
+            using (FileStream outFile = new FileStream("E:/asdfasdfasdf.xml", FileMode.Create, FileAccess.Write))
+            {
+                doc.Save(outFile);
+            }
+        }
+
 
         private static void FlattenPDF(string filePath)
         {
