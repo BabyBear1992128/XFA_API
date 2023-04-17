@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using XFA_API.Models;
 
@@ -90,8 +91,17 @@ namespace XFA_API.Controllers
 
             FileStream inFile = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
-            FileStreamResult fileStreamResult = new FileStreamResult(inFile, "application/pdf");
-            fileStreamResult.FileDownloadName = Path.GetRandomFileName() + "_export.pdf";
+            new FileExtensionContentTypeProvider().TryGetContentType(filePath, out var contentType);
+
+            if(contentType == null)
+            {
+                contentType = "application/octet-stream";
+            }
+
+            var fileExtension = Path.GetExtension(filePath);
+
+            FileStreamResult fileStreamResult = new FileStreamResult(inFile, contentType);
+            fileStreamResult.FileDownloadName = Path.GetRandomFileName() + "_export" + fileExtension;
 
             return fileStreamResult;
         }

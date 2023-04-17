@@ -14,6 +14,7 @@ using TextField = TallComponents.PDF.Forms.Fields.TextField;
 using System.Xml.Linq;
 using System.Xml;
 using iTextSharp.text.pdf;
+using System.Text;
 
 namespace XFA_API.Controllers
 {
@@ -81,6 +82,16 @@ namespace XFA_API.Controllers
             Document doc = new Document(inFile);
 
             List<string> paths = doc.Fields.FullNames.ToList();
+
+            // Syncfusion
+            PdfLoadedXfaDocument loadedDocument = new PdfLoadedXfaDocument(inFile);
+
+            PdfLoadedXfaForm loadedForm = loadedDocument.XfaForm;
+
+            // iText
+
+            // Aspose
+
 
             return paths;
         }
@@ -268,17 +279,13 @@ namespace XFA_API.Controllers
 
             var filePath = document.file_path;
 
-            //
-
-            //
-
             FileStream inFile = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
             Document doc = new Document(inFile);
 
             doc.ScriptBehavior = ScriptBehavior.Format;
 
-            doc.Fields.Changed += Fields_Changed;
+            //doc.Fields.Changed += Fields_Changed;
 
             // Action
             foreach (var action in actionFieldRequests.Actions)
@@ -350,32 +357,32 @@ namespace XFA_API.Controllers
                 xdp.Write(xdpFile);
             }
 
-            // Generate XML from XDP
-            XmlDocument xmlDoc1 = new XmlDocument();
-            xmlDoc1.Load(xdpPath);
-            var xfaData = xmlDoc1.LastChild.FirstChild.OuterXml;
+            //// Generate XML from XDP
+            //XmlDocument xmlDoc1 = new XmlDocument();
+            //xmlDoc1.Load(xdpPath);
+            //var xfaData = xmlDoc1.LastChild.FirstChild.OuterXml;
 
-            XmlDocument xdoc = new XmlDocument();
-            xdoc.LoadXml(xfaData);
-            xdoc.Save(xmlPath);
+            //XmlDocument xdoc = new XmlDocument();
+            //xdoc.LoadXml(xfaData);
+            //xdoc.Save(xmlPath);
 
-            // Merge XML and Blank File
-            var uniqueFileName = DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".pdf";
+            //// Merge XML and Blank File
+            //var uniqueFileName = DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".pdf";
 
-            var folderName = Path.Combine("Resources", "Pdf", "Export");
+            //var folderName = Path.Combine("Resources", "Pdf", "Export");
 
-            var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
+            //var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
 
-            var exportPath = Path.Combine(pathToSave, uniqueFileName);
+            //var exportPath = Path.Combine(pathToSave, uniqueFileName);
 
-            Directory.CreateDirectory(Path.GetDirectoryName(exportPath));
+            //Directory.CreateDirectory(Path.GetDirectoryName(exportPath));
 
-            mergeXFA(filePath, xmlPath, exportPath);
+            //mergeXFA(filePath, xmlPath, exportPath);
 
             // Save to context
             ExportedFile exportedFile = new ExportedFile
             {
-                Path = exportPath,
+                Path = xdpPath,
             };
 
             await _service.SaveExportedFileAsync(exportedFile);
