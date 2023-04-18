@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -23,7 +24,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddDbContext<XFAContext>(opt =>
         //opt.UseInMemoryDatabase("XFA_Data")
-        opt.UseNpgsql(builder.Configuration.GetConnectionString("Postgres_Db"))
+        //opt.UseNpgsql(builder.Configuration.GetConnectionString("Postgres_Db"))
+        opt.UseMySQL(builder.Configuration.GetConnectionString("MySQL"))
     );
 
 
@@ -47,6 +49,7 @@ builder.Services.AddTransient<IDocumentService, DocumentService>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
