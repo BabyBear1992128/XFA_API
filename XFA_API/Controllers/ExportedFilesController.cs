@@ -29,7 +29,11 @@ namespace XFA_API.Controllers
           {
               return NotFound();
           }
-            return await _context.ExportedFiles.ToListAsync();
+            return await _context.ExportedFiles
+                .OrderByDescending(item => item.Id)
+                //.Skip(0)
+                .Take(10)
+                .ToListAsync();
         }
 
         // GET: api/ExportedFiles/5
