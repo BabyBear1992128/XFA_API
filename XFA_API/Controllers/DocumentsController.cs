@@ -15,6 +15,13 @@ using System.Xml.Linq;
 using System.Xml;
 using iTextSharp.text.pdf;
 using System.Text;
+using Microsoft.IdentityModel.Tokens;
+using MySqlX.XDevAPI;
+using Newtonsoft.Json.Linq;
+using static System.Net.Mime.MediaTypeNames;
+using System.Text.Json;
+using NuGet.Protocol;
+using System.Security.Cryptography;
 
 namespace XFA_API.Controllers
 {
@@ -24,6 +31,14 @@ namespace XFA_API.Controllers
     {
         private readonly XFAContext _context;
         private readonly IDocumentService _service;
+        private static readonly HttpClient client = new HttpClient();
+
+        private string COMPANY_CUI = "42906264";
+        private string PRIVATE_KEY = "ACAF8003CB2B303F6A6409E762DB9D20";
+        private string INVOCE_RELEASE_ENDPOINT = "https://testapp.fgo.ro/publicws/factura/emitere";
+        private string PDFKIT_API_ENDPOINT = "http://localhost:8000/api/Documents/GenerationDoc";
+        private string PLATFORM_URL = "https://89.117.54.26";
+        private string ROOT_URL = "http://localhost:8000";
 
         public DocumentsController(XFAContext context, IDocumentService service)
         {
@@ -290,6 +305,8 @@ namespace XFA_API.Controllers
             // Action
             foreach (var action in actionFieldRequests.Actions)
             {
+                if (action == null) continue;
+
                 switch (action.Type)
                 {
                     case "button":
@@ -301,7 +318,20 @@ namespace XFA_API.Controllers
 
                             if (buttonField != null) 
                             {
-                                buttonField.XfaInfo.ClickActions.Execute();
+                                var times = Int32.Parse(action.Data);
+
+                                if(times > 1)
+                                {
+                                    for(var i = 0; i < times; i++)
+                                    {
+                                        buttonField.XfaInfo.ClickActions.Execute();
+                                    }
+                                }
+                                else
+                                {
+                                    buttonField.XfaInfo.ClickActions.Execute();
+                                }
+                                
                             }
                         }
                         break;
@@ -327,13 +357,22 @@ namespace XFA_API.Controllers
 
                             if (checkField != null)
                             {
-                                if(action.Data == "true")
+                                checkField.CheckBoxValue = CheckState.On;
+                            }
+                        }
+                        break;
+                    case "text":
+                        var field4 = doc.Fields[action.FieldPath];
+
+                        if (field4 != null && field4 is TextField)
+                        {
+                            var textField = field4 as TextField;
+
+                            if (textField != null)
+                            {
+                                if (!action.Data.IsNullOrEmpty())
                                 {
-                                    checkField.CheckBoxValue = CheckState.On;
-                                }
-                                else
-                                {
-                                    checkField.CheckBoxValue = CheckState.Off;
+                                    textField.Value = action.Data;
                                 }
                             }
                         }
@@ -357,38 +396,296 @@ namespace XFA_API.Controllers
                 xdp.Write(xdpFile);
             }
 
-            //// Generate XML from XDP
-            //XmlDocument xmlDoc1 = new XmlDocument();
-            //xmlDoc1.Load(xdpPath);
-            //var xfaData = xmlDoc1.LastChild.FirstChild.OuterXml;
+            // Generate XML from XDP
+            XmlDocument xmlDoc1 = new XmlDocument();
+            xmlDoc1.Load(xdpPath);
+            var xfaData = xmlDoc1.LastChild.FirstChild.OuterXml;
 
-            //XmlDocument xdoc = new XmlDocument();
-            //xdoc.LoadXml(xfaData);
-            //xdoc.Save(xmlPath);
+            XmlDocument xdoc = new XmlDocument();
+            xdoc.LoadXml(xfaData);
+            xdoc.Save(xmlPath);
 
-            //// Merge XML and Blank File
-            //var uniqueFileName = DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".pdf";
+            // Merge XML and Blank File
+            var uniqueFileName = DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".pdf";
 
-            //var folderName = Path.Combine("Resources", "Pdf", "Export");
+            var folderName = Path.Combine("Resources", "Pdf", "Export");
 
-            //var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
+            var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
 
-            //var exportPath = Path.Combine(pathToSave, uniqueFileName);
+            var exportPath = Path.Combine(pathToSave, uniqueFileName);
 
-            //Directory.CreateDirectory(Path.GetDirectoryName(exportPath));
+            Directory.CreateDirectory(Path.GetDirectoryName(exportPath));
 
-            //mergeXFA(filePath, xmlPath, exportPath);
+            mergeXFA(filePath, xmlPath, exportPath);
 
             // Save to context
             ExportedFile exportedFile = new ExportedFile
             {
-                Path = xdpPath,
+                //Path = xdpPath,
+                Path = exportPath,
             };
 
             await _service.SaveExportedFileAsync(exportedFile);
 
             //
             return "/api/ExportedFiles/Download/" + exportedFile.Id;
+        }
+
+        [HttpPost("generate")]
+        public async Task<ActionResult<APIResponse>> MainEndpoint(APIRequest apiRequest)
+        {
+            if (_context == null)
+            {
+                return NotFound();
+            }
+
+            if (apiRequest == null || apiRequest.Doc_type == null || apiRequest.Pdfs == null || apiRequest.Xmls == null)
+            {
+                return NotFound();
+            }
+
+            var pdfRequest = new ActionFieldRequest();
+            pdfRequest.Id = long.Parse(apiRequest.Doc_type);
+
+            var actions = new List<ActionMap>();
+
+            var pdfs = apiRequest.Pdfs;
+            foreach (var pdf in pdfs)
+            {
+                var actionMap = new ActionMap();
+                actionMap.FieldPath = pdf.Path;
+                actionMap.Type = pdf.Type;
+                actionMap.Data = pdf.Times;
+
+                actions.Add(actionMap);
+            }
+
+            foreach (var xml in apiRequest.Xmls)
+            {
+                var actionMap = new ActionMap();
+                actionMap.FieldPath = xml.Path;
+                actionMap.Type = "text";
+                actionMap.Data = xml.Value;
+
+                actions.Add(actionMap);
+            }
+
+            pdfRequest.Actions = actions.ToArray();
+
+            // Extract Data to send request to PDF Kit module
+            var returnResult = new APIResponse();
+
+            // Send and receive from Invoice API
+            var returnString = await GeneratePDF(pdfRequest);
+
+
+            returnResult.pdf_link = returnString;
+
+            // Extract Data to send request to Invoice API
+
+            // Make request to send to Invoice API
+
+            var values = new Dictionary<string, string>
+              {
+                  { "CodUnic", COMPANY_CUI },
+                  { "Hash", GenerateHash("John")},
+                  { "Valuta", "RON" },
+                  { "TipFactura", "Factura" },
+                  { "Serie", "test series" },
+                  { "Client[Denumire]", "John" },
+                  { "Client[CodUnic]", "" },//
+                  { "Client[NrRegCom]", "" },//
+                  { "Client[Judet]", "" },//
+                  { "Client[Localitate]", "" },//
+                  { "Client[Adresa]", "" },//
+                  { "Client[Tip]", "PF" },
+                  { "Continut[0][Denumire]", "COMPLETARE DECLARATIE UNICA" },
+                  { "Continut[0][UM]", "BUC" },
+                  { "Continut[0][NrProduse]", "2222.33" },
+                  { "Continut[0][CotaTVA]", "19" },
+                  { "Continut[0][PretUnitar]", "22.00" },
+                  { "PlatformaUrl", PLATFORM_URL },
+              };
+
+            var content = new FormUrlEncodedContent(values);
+
+            // Send and receive from Invoice API
+            var response = await client.PostAsync(INVOCE_RELEASE_ENDPOINT, content);
+
+            var responseString = await response.Content.ReadAsStringAsync();
+
+            JObject json = JObject.Parse(responseString);
+
+            if (json.GetBoolean("Success").Value)
+            {
+                var factura = json.GetValue("Factura");
+
+                var numar = factura.Value<string>("Numar");
+                var serie = factura.Value<string>("Serie");
+                var link = factura.Value<string>("Link");
+
+                returnResult.success = true;
+                returnResult.invoice_link = link;
+            }
+            else
+            {
+                var message = json.Value<string>("Message");
+
+                returnResult.success = false;
+                returnResult.message = message;
+            }
+
+            return returnResult;
+        }
+
+        private async Task<string> GeneratePDF(ActionFieldRequest actionFieldRequests)
+        {
+            var id = actionFieldRequests.Id;
+
+            var document = await _context.Documents.FindAsync(id);
+
+            if (document == null)
+            {
+                return "";
+            }
+
+            var filePath = document.file_path;
+
+            FileStream inFile = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+            Document doc = new Document(inFile);
+
+            doc.ScriptBehavior = ScriptBehavior.Format;
+
+            //doc.Fields.Changed += Fields_Changed;
+
+            // Action
+            foreach (var action in actionFieldRequests.Actions)
+            {
+                if (action == null) continue;
+
+                switch (action.Type)
+                {
+                    case "button":
+                        var field1 = doc.Fields[action.FieldPath];
+
+                        if (field1 != null && field1 is PushButtonField)
+                        {
+                            var buttonField = field1 as PushButtonField;
+
+                            if (buttonField != null)
+                            {
+                                var times = Int32.Parse(action.Data);
+
+                                if (times > 1)
+                                {
+                                    for (var i = 0; i < times; i++)
+                                    {
+                                        buttonField.XfaInfo.ClickActions.Execute();
+                                    }
+                                }
+                                else
+                                {
+                                    buttonField.XfaInfo.ClickActions.Execute();
+                                }
+
+                            }
+                        }
+                        break;
+                    case "radio":
+                        var field2 = doc.Fields[action.FieldPath];
+
+                        if (field2 != null && field2 is RadioButtonField)
+                        {
+                            var radioField = field2 as RadioButtonField;
+
+                            if (radioField != null)
+                            {
+                                radioField.Value = action.Data;
+                            }
+                        }
+                        break;
+                    case "checkbox":
+                        var field3 = doc.Fields[action.FieldPath];
+
+                        if (field3 != null && field3 is CheckBoxField)
+                        {
+                            var checkField = field3 as CheckBoxField;
+
+                            if (checkField != null)
+                            {
+                                checkField.CheckBoxValue = CheckState.On;
+                            }
+                        }
+                        break;
+                    case "text":
+                        var field4 = doc.Fields[action.FieldPath];
+
+                        if (field4 != null && field4 is TextField)
+                        {
+                            var textField = field4 as TextField;
+
+                            if (textField != null)
+                            {
+                                if (!action.Data.IsNullOrEmpty())
+                                {
+                                    textField.Value = action.Data;
+                                }
+                            }
+                        }
+                        break;
+                    default: break;
+                }
+            }
+
+            // Export to XDP
+            XdpFormData xdp = doc.Export(SubmitFormat.Xdp, false) as XdpFormData;
+            //xdp.Path = filePath;
+
+            var xdpPath = Path.Combine("Resources", "Pdf", "Xdp", DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".xdp");
+            var xmlPath = Path.Combine("Resources", "Pdf", "Xml", DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".xml");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(xdpPath));
+            Directory.CreateDirectory(Path.GetDirectoryName(xmlPath));
+
+            using (FileStream xdpFile = new FileStream(xdpPath, FileMode.Create, FileAccess.Write))
+            {
+                xdp.Write(xdpFile);
+            }
+
+            // Generate XML from XDP
+            XmlDocument xmlDoc1 = new XmlDocument();
+            xmlDoc1.Load(xdpPath);
+            var xfaData = xmlDoc1.LastChild.FirstChild.OuterXml;
+
+            XmlDocument xdoc = new XmlDocument();
+            xdoc.LoadXml(xfaData);
+            xdoc.Save(xmlPath);
+
+            // Merge XML and Blank File
+            var uniqueFileName = DateTimeOffset.Now.ToUnixTimeMilliseconds() + ".pdf";
+
+            var folderName = Path.Combine("Resources", "Pdf", "Export");
+
+            var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
+
+            var exportPath = Path.Combine(pathToSave, uniqueFileName);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(exportPath));
+
+            mergeXFA(filePath, xmlPath, exportPath);
+
+            // Save to context
+            ExportedFile exportedFile = new ExportedFile
+            {
+                //Path = xdpPath,
+                Path = exportPath,
+            };
+
+            await _service.SaveExportedFileAsync(exportedFile);
+
+            //
+            return ROOT_URL + "/api/ExportedFiles/Download/" + exportedFile.Id;
         }
 
         // PUT: api/Documents/5
@@ -493,20 +790,21 @@ namespace XFA_API.Controllers
             {
                 iTextSharp.text.pdf.PdfReader pdfReader = new iTextSharp.text.pdf.PdfReader(pdf);
 
-                try
+                if (pdfReader != null && filledPdf != null)
                 {
-                    PdfStamper stamper = new PdfStamper(pdfReader, filledPdf, '\0', true);
+                    PdfStamper stamper = new(pdfReader, filledPdf, '\0', true);
 
-                    stamper.AcroFields.Xfa.FillXfaForm(xml);
-                    stamper.Close();
-                    pdfReader.Close();
-                }
-                catch(NullReferenceException ex)
-                {
-                    Console.WriteLine(ex.ToString());
+                    if (stamper != null)
+                    {
+                        if (xml != null)
+                        {
+                            stamper.AcroFields.Xfa.FillXfaForm(xml);
+                            stamper.Close();
+                        }
+                        pdfReader.Close();
+                    }
                 }
 
-                
             }
         }
 
@@ -578,6 +876,30 @@ namespace XFA_API.Controllers
                 {
                     form.Write(fileOut);
                 }
+            }
+        }
+
+
+
+        // Generate HASH Code for send request to Invoice API
+        private string GenerateHash(string input)
+        {
+            var temp = COMPANY_CUI + PRIVATE_KEY + input;
+
+            return EncryptSHA1(temp);
+        }
+
+        //
+        private string EncryptSHA1(string input)
+        {
+            using (SHA1 sha1Hash = SHA1.Create())
+            {
+                //From String to byte array
+                byte[] sourceBytes = Encoding.UTF8.GetBytes(input);
+                byte[] hashBytes = sha1Hash.ComputeHash(sourceBytes);
+                string hash = BitConverter.ToString(hashBytes).Replace("-", String.Empty);
+
+                return hash;
             }
         }
     }
