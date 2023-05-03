@@ -38,7 +38,6 @@ namespace XFA_API.Controllers
         private string INVOCE_RELEASE_ENDPOINT = "https://testapp.fgo.ro/publicws/factura/emitere";
         private string PDFKIT_API_ENDPOINT = "http://localhost:8000/api/Documents/GenerationDoc";
         private string PLATFORM_URL = "https://89.117.54.26";
-        private string ROOT_URL = "http://localhost:8000";
 
         public DocumentsController(XFAContext context, IDocumentService service)
         {
@@ -685,7 +684,8 @@ namespace XFA_API.Controllers
             await _service.SaveExportedFileAsync(exportedFile);
 
             //
-            return ROOT_URL + "/api/ExportedFiles/Download/" + exportedFile.Id;
+
+            return "http://89.117.54.26/api/ExportedFiles/Download/" + exportedFile.Id;
         }
 
         // PUT: api/Documents/5
