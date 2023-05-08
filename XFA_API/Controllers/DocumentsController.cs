@@ -37,7 +37,7 @@ namespace XFA_API.Controllers
         private string PRIVATE_KEY = "ACAF8003CB2B303F6A6409E762DB9D20";
         private string INVOCE_RELEASE_ENDPOINT = "https://testapp.fgo.ro/publicws/factura/emitere";
         private string PDFKIT_API_ENDPOINT = "http://localhost:8000/api/Documents/GenerationDoc";
-        private string PLATFORM_URL = "https://89.117.54.26";
+        private string PLATFORM_URL = "http://89.117.54.26";
 
         public DocumentsController(XFAContext context, IDocumentService service)
         {
@@ -438,7 +438,7 @@ namespace XFA_API.Controllers
                 return NotFound();
             }
 
-            if (apiRequest == null || apiRequest.Doc_type == null || apiRequest.Pdfs == null || apiRequest.Xmls == null)
+            if (apiRequest == null || apiRequest.Doc_type == null)
             {
                 return NotFound();
             }
@@ -448,31 +448,39 @@ namespace XFA_API.Controllers
 
             var actions = new List<ActionMap>();
 
-            var pdfs = apiRequest.Pdfs;
-            foreach (var pdf in pdfs)
+            if (!apiRequest.Pdfs.IsNullOrEmpty())
             {
-                var actionMap = new ActionMap();
-                actionMap.FieldPath = pdf.Path;
-                actionMap.Type = pdf.Type;
-                actionMap.Data = pdf.Times;
+                var pdfs = apiRequest.Pdfs;
+                foreach (var pdf in pdfs)
+                {
+                    var actionMap = new ActionMap();
+                    actionMap.FieldPath = pdf.Path;
+                    actionMap.Type = pdf.Type;
+                    actionMap.Data = pdf.Times;
 
-                actions.Add(actionMap);
+                    actions.Add(actionMap);
+                }
             }
 
-            foreach (var xml in apiRequest.Xmls)
+            if (!apiRequest.Xmls.IsNullOrEmpty())
             {
-                var actionMap = new ActionMap();
-                actionMap.FieldPath = xml.Path;
-                actionMap.Type = "text";
-                actionMap.Data = xml.Value;
+                foreach (var xml in apiRequest.Xmls)
+                {
+                    var actionMap = new ActionMap();
+                    actionMap.FieldPath = xml.Path;
+                    actionMap.Type = "text";
+                    actionMap.Data = xml.Value;
 
-                actions.Add(actionMap);
+                    actions.Add(actionMap);
+                }
             }
 
             pdfRequest.Actions = actions.ToArray();
 
             // Extract Data to send request to PDF Kit module
             var returnResult = new APIResponse();
+            returnResult.success = true;
+            returnResult.message = "";
 
             // Send and receive from Invoice API
             var returnString = await GeneratePDF(pdfRequest);
@@ -480,59 +488,67 @@ namespace XFA_API.Controllers
 
             returnResult.pdf_link = returnString;
 
+            Console.WriteLine(">>>>>>>>>>>>>>>>>>" + apiRequest.Doc_type);
+            Console.WriteLine(">>>>>>>>>>>>>>>>>>" + returnString);
+
             // Extract Data to send request to Invoice API
 
             // Make request to send to Invoice API
-
-            var values = new Dictionary<string, string>
-              {
-                  { "CodUnic", COMPANY_CUI },
-                  { "Hash", GenerateHash("John")},
-                  { "Valuta", "RON" },
-                  { "TipFactura", "Factura" },
-                  { "Serie", "test series" },
-                  { "Client[Denumire]", "John" },
-                  { "Client[CodUnic]", "" },//
-                  { "Client[NrRegCom]", "" },//
-                  { "Client[Judet]", "" },//
-                  { "Client[Localitate]", "" },//
-                  { "Client[Adresa]", "" },//
-                  { "Client[Tip]", "PF" },
-                  { "Continut[0][Denumire]", "COMPLETARE DECLARATIE UNICA" },
-                  { "Continut[0][UM]", "BUC" },
-                  { "Continut[0][NrProduse]", "2222.33" },
-                  { "Continut[0][CotaTVA]", "19" },
-                  { "Continut[0][PretUnitar]", "22.00" },
-                  { "PlatformaUrl", PLATFORM_URL },
-              };
-
-            var content = new FormUrlEncodedContent(values);
-
-            // Send and receive from Invoice API
-            var response = await client.PostAsync(INVOCE_RELEASE_ENDPOINT, content);
-
-            var responseString = await response.Content.ReadAsStringAsync();
-
-            JObject json = JObject.Parse(responseString);
-
-            if (json.GetBoolean("Success").Value)
+            if (!apiRequest.Invoice.Valuta.IsNullOrEmpty())
             {
-                var factura = json.GetValue("Factura");
+                var values = new Dictionary<string, string>
+                {
+                    { "CodUnic", COMPANY_CUI },
+                    { "Hash", GenerateHash(apiRequest.Invoice.Client_CodUnic)},
+                    { "Valuta", apiRequest.Invoice.Valuta.IsNullOrEmpty() ? "RON" : apiRequest.Invoice.Valuta },
+                    { "TipFactura", apiRequest.Invoice.Client_Tip.IsNullOrEmpty() ? "Factura" : apiRequest.Invoice.Client_Tip },
+                    { "Serie", "test series" },
+                    { "Client[Denumire]", apiRequest.Invoice.Client_CodUnic },
+                    { "Client[CodUnic]", "" }, //
+                    { "Client[NrRegCom]", "" }, //
+                    { "Client[Judet]", "" }, //
+                    { "Client[Localitate]", "" }, //
+                    { "Client[Adresa]", "" }, //
+                    { "Client[Tip]", "PF" }, //
+                    { "Continut[0][Denumire]", apiRequest.Invoice.Denumire.IsNullOrEmpty() ? "COMPLETARE DECLARATIE UNICA" : apiRequest.Invoice.Denumire },
+                    { "Continut[0][UM]", apiRequest.Invoice.UM.IsNullOrEmpty() ? "BUC" : apiRequest.Invoice.UM },
+                    { "Continut[0][NrProduse]", apiRequest.Invoice.NrProduse.IsNullOrEmpty() ? "2222.33" : apiRequest.Invoice.NrProduse },
+                    { "Continut[0][CotaTVA]", apiRequest.Invoice.CotaTVA.IsNullOrEmpty() ? "19" : apiRequest.Invoice.CotaTVA },
+                    { "Continut[0][PretUnitar]", apiRequest.Invoice.PretUnitar.IsNullOrEmpty() ? "22.00" : apiRequest.Invoice.PretUnitar },
+                    { "PlatformaUrl", PLATFORM_URL },
+                };
 
-                var numar = factura.Value<string>("Numar");
-                var serie = factura.Value<string>("Serie");
-                var link = factura.Value<string>("Link");
+                Console.WriteLine(">>>>>>>>>>>>>>>>>>" + values.ToString());
 
-                returnResult.success = true;
-                returnResult.invoice_link = link;
+                var content = new FormUrlEncodedContent(values);
+
+                // Send and receive from Invoice API
+                var response = await client.PostAsync(INVOCE_RELEASE_ENDPOINT, content);
+
+                var responseString = await response.Content.ReadAsStringAsync();
+
+                JObject json = JObject.Parse(responseString);
+
+                Console.WriteLine(">>>>>>>>>>>>>>>>>>" + json.ToString());
+
+                if (json.GetBoolean("Success").Value)
+                {
+                    var factura = json.GetValue("Factura");
+
+                    var numar = factura.Value<string>("Numar");
+                    var serie = factura.Value<string>("Serie");
+                    var link = factura.Value<string>("Link");
+
+                    returnResult.invoice_link = link;
+                }
+                else
+                {
+                    var message = json.Value<string>("Message");
+
+                    returnResult.message = message;
+                }
             }
-            else
-            {
-                var message = json.Value<string>("Message");
-
-                returnResult.success = false;
-                returnResult.message = message;
-            }
+            
 
             return returnResult;
         }
