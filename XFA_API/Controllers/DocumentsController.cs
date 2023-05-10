@@ -34,7 +34,7 @@ namespace XFA_API.Controllers
         private static readonly HttpClient client = new HttpClient();
 
         private string COMPANY_CUI = "42906264";
-        private string PRIVATE_KEY = "ACAF8003CB2B303F6A6409E762DB9D20"; // 1C1AFC31D7BBA32146D081E094D7D719
+        private string PRIVATE_KEY = "ACAF8003CB2B303F6A6409E762DB9D20";
         private string INVOCE_RELEASE_ENDPOINT = "https://testapp.fgo.ro/publicws/factura/emitere";
         private string PDFKIT_API_ENDPOINT = "http://localhost:8000/api/Documents/GenerationDoc";
         private string PLATFORM_URL = "http://89.117.54.26";
