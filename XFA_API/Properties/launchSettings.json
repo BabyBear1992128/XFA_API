@@ -18,7 +18,11 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
       "dotnetRunMessages": true,
+<<<<<<< HEAD
       "applicationUrl": "https://localhost:3000;http://localhost:5231"
+=======
+      "applicationUrl": "https://localhost:7200;http://localhost:5231"
+>>>>>>> parent of a7ba9cb (change running port to 8000)
     },
     "IIS Express": {
       "commandName": "IISExpress",
