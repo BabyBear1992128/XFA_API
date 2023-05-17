@@ -468,7 +468,7 @@ namespace XFA_API.Controllers
                 {
                     var actionMap = new ActionMap();
                     actionMap.FieldPath = xml.Path;
-                    actionMap.Type = "text";
+                    actionMap.Type = xml.Type;
                     actionMap.Data = xml.Value;
 
                     actions.Add(actionMap);
@@ -633,7 +633,7 @@ namespace XFA_API.Controllers
                             }
                         }
                         break;
-                    case "text":
+                    case "textbox":
                         var field4 = doc.Fields[action.FieldPath];
 
                         if (field4 != null && field4 is TextField)

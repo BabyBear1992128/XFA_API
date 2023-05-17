@@ -18,6 +18,7 @@
     public class Xml
     {
         public string Path { get; set; }
+        public string Type { get; set; }
         public string Value { get; set; }
     }
 
