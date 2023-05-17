@@ -22,6 +22,7 @@ using static System.Net.Mime.MediaTypeNames;
 using System.Text.Json;
 using NuGet.Protocol;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 namespace XFA_API.Controllers
 {
@@ -494,7 +495,7 @@ namespace XFA_API.Controllers
             // Extract Data to send request to Invoice API
 
             // Make request to send to Invoice API
-            if (!apiRequest.Invoice.Valuta.IsNullOrEmpty())
+            if (apiRequest.Invoice != null && !apiRequest.Invoice.Valuta.IsNullOrEmpty())
             {
                 var values = new Dictionary<string, string>
                 {
@@ -614,10 +615,10 @@ namespace XFA_API.Controllers
                         {
                             var radioField = field2 as RadioButtonField;
 
-                            if (radioField != null)
-                            {
-                                radioField.Value = action.Data;
-                            }
+                            //if (radioField != null)
+                            //{
+                            //    radioField.RadioButtonValue = radioField.Options[0];
+                            //}
                         }
                         break;
                     case "checkbox":
@@ -675,6 +676,37 @@ namespace XFA_API.Controllers
 
             XmlDocument xdoc = new XmlDocument();
             xdoc.LoadXml(xfaData);
+
+            var form1Node = xdoc.FirstChild.FirstChild;
+
+            foreach (var action in actionFieldRequests.Actions)
+            {
+                if (action.Type != "radio") continue;
+
+                var xpath = action.FieldPath;
+
+                var xpaths = xpath.Split(".");
+
+                var targetNode = form1Node;
+
+                for (var i = 0; i < xpaths.Length; i++) 
+                {
+                    Regex pattern = new Regex(@"(\w+)\[(\w+)\]");
+                    Match match = pattern.Match(xpaths[i]);
+
+                    if (match.Success)
+                    {
+                        string nodePath = match.Groups[1].Value; // Extracts 'AA'
+                        int nodeIndex = Int32.Parse(match.Groups[2].Value); // Extracts 'BBC'
+
+                        targetNode = targetNode.SelectNodes(nodePath)[nodeIndex];
+                    }
+                }
+
+                targetNode.InnerText = action.Data;
+            }
+
+
             xdoc.Save(xmlPath);
 
             // Merge XML and Blank File
